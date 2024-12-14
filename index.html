@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>휘매쓰 연산 챌린지!</title>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+<style>
+body {
+  font-family: sans-serif;
+  background: #f0f0f0;
+  margin:0;
+  padding:0;
+}
+#game-container {
+  width: 800px;
+  margin: auto;
+  background: #fff;
+  padding:20px;
+  min-height:600px;
+  position: relative;
+}
+h1 {
+  text-align:center;
+}
+#difficulty-select, #quiz-area, #result-area {
+  display:none;
+}
+#energy-bar-container {
+  width:100%;
+  height:20px;
+  background:#ccc;
+  margin-bottom:10px;
+  position:relative;
+}
+#energy-bar {
+  width:100%;
+  height:100%;
+  background:#4caf50;
+  transition: width 0.2s linear;
+}
+#lives {
+  font-size:14px;
+  margin-bottom:5px;
+}
+#score-display {
+  font-size:14px;
+  margin-bottom:5px;
+}
+#global-timer {
+  font-size:14px;
+  margin-bottom:5px;
+}
+.answers {
+  margin-top:20px;
+}
+.answers button {
+  margin:5px;
+  background:#eee;
+  border:1px solid #aaa;
+  padding:10px;
+  cursor:pointer;
+}
+.answers button:hover {
+  background:#ddd;
+}
+#popup-solution, #popup-reward {
+  display:none;
+  position:absolute;
+  top:50px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#fff;
+  padding:20px;
+  border:2px solid #333;
+  z-index:999;
+  width:400px;
+}
+.popup-close {
+  margin-top:10px;
+  background:#333;
+  color:#fff;
+  padding:5px;
+  cursor:pointer;
+  text-align:center;
+}
+#start-screen, #difficulty-select {
+  text-align:center;
+}
+.hidden {display:none;}
+</style>
+</head>
+<body>
+<div id="game-container">
+  <h1>휘매쓰 연산 챌린지!</h1>
+  <div id="start-screen">
+    <p>안녕하세요! "휘매쓰 연산 챌린지"에 오신 것을 환영합니다.</p>
+    <p>시작하려면 "시작하기" 버튼을 눌러주세요.</p>
+    <button onclick="goToDifficulty()">시작하기</button>
+  </div>
+  <div id="difficulty-select">
+    <p>난이도를 선택하세요.</p>
+    <button onclick="startGame('hardest')">최상(20초)</button>
+    <button onclick="startGame('hard')">상(30초)</button>
+    <button onclick="startGame('medium')">중(40초)</button>
+    <button onclick="startGame('easy')">하(시간제한없음)</button>
+  </div>
+  <div id="quiz-area">
+    <div id="lives"></div>
+    <div id="score-display"></div>
+    <div id="global-timer"></div>
+    <div id="energy-bar-container"><div id="energy-bar"></div></div>
+    <div id="question"></div>
+    <div class="answers" id="answers"></div>
+  </div>
+  <div id="result-area">
+    <h2>게임 종료!</h2>
+    <p>최종 점수: <span id="final-score"></span></p>
+    <button onclick="restartGame()">다시하기</button>
+  </div>
+  <div id="popup-solution">
+    <div id="solution-content"></div>
+    <div class="popup-close" onclick="closeSolution()">닫기</div>
+  </div>
+  <div id="popup-reward">
+    <div id="reward-content"></div>
+    <div class="popup-close" onclick="closeReward()">닫기</div>
+  </div>
+</div>
+<script>
+// 난이도별 시간/점수
+let difficultySettings = {
+  hardest: {time:20, score:20},
+  hard:{time:30, score:15},
+  medium:{time:40, score:13},
+  easy:{time:null, score:10}
+};
+
+// 각 문제 데이터
+// 문제는 여러 세트
+// 1~27: 함수 여부 판정(OX)
+// 지시문: "다음 중 y가 x의 함수인 것에는 ○표, 아닌 것에는 ×표를 하여라."
+// ○: 1,3,5,6,10,13,15,16,18,20,21,22,24,26
+// ×: 나머지
+let problems = [];
+
+let funcInstr = "다음 중 \\(y\\)가 \\(x\\)의 함수인 것에는 ○표, 아닌 것에는 ×표를 하여라.";
+let funcList = [
+{n:1, q:"\\(y=(5 \\text{와 자연수 } x \\text{의 최대공약수})\\)", ans:"O"},
+{n:2, q:"\\(y=(\\text{자연수 } x \\text{의 배수})\\)", ans:"X"},
+{n:3, q:"\\(y=(\\text{자연수 } x \\text{를 }5\\text{로 나누었을 때의 나머지})\\)", ans:"O"},
+{n:4, q:"\\(y=(\\text{정수 } x \\text{보다 작은 정수})\\)", ans:"X"},
+{n:5, q:"\\(y=(\\text{자연수 } x \\text{보다 2 큰 수})\\)", ans:"O"},
+{n:6, q:"\\(y=(\\text{자연수 } x \\text{보다 작은 소수의 개수})\\)", ans:"O"},
+{n:7, q:"\\(y=(8 \\text{와 자연수 } x \\text{의 공약수})\\)", ans:"X"},
+{n:8, q:"\\(y=(\\text{자연수 } x \\text{의 소인수})\\)", ans:"X"},
+{n:9, q:"\\(y=(x \\text{의 약수})\\)", ans:"X"},
+{n:10,q:"\\(y=(x \\text{의 약수의 개수})\\)", ans:"O"},
+{n:11,q:"\\(y=(x \\text{보다 작은 자연수})\\)", ans:"X"},
+{n:12,q:"\\(y=(x \\text{와 서로소인 수})\\)", ans:"X"},
+{n:13,q:"\\(y=(x \\text{를 }3\\text{으로 나눈 나머지})\\)", ans:"O"},
+{n:14,q:"\\(y=(\\text{자연수 } x \\text{와 그보다 작은 짝수})\\)", ans:"X"},
+{n:15,q:"\\(y=(\\text{자연수 } x \\text{의 3배인 수})\\)", ans:"O"},
+{n:16,q:"\\(y=(\\text{자연수 } x \\text{와 그보다 작은 홀수의 개수})\\)", ans:"O"},
+{n:17,q:"\\(y=(x \\text{보다 작은 자연수})\\)", ans:"X"},
+{n:18,q:"\\(y=(\\text{정수 } x \\text{의 절댓값})\\)", ans:"O"},
+{n:19,q:"\\(y=(\\text{절댓값이 } x \\text{인 수})\\)", ans:"X"},
+{n:20,q:"\\(y=(x \\text{와의 합이 }8\\text{인 수})\\)", ans:"O"},
+{n:21,q:"\\(x+y=3\\text{을 만족하는 두 수 }x,y\\)", ans:"O"},
+{n:22,q:"\\(y=(\\text{자연수 } x \\text{와 }24\\text{의 최소공배수})\\)", ans:"O"},
+{n:23,q:"시내버스 요금 \\(x\\)원을 내고 가는 거리 \\(y\\)km", ans:"X"},
+{n:24,q:"하루 중 낮의 길이 \\(x\\)와 밤의 길이 \\(y\\)", ans:"O"},
+{n:25,q:"둘레의 길이가 \\(x\\)인 직사각형의 넓이 \\(y\\)", ans:"X"},
+{n:26,q:"대각선의 길이가 \\(x\\)인 정사각형의 넓이 \\(y\\)", ans:"O"},
+{n:27,q:"키가 \\(x\\)cm인 사람의 몸무게 \\(y\\)kg", ans:"X"}
+];
+
+funcList.forEach(f=>{
+  problems.push({
+    id:f.n,
+    type:'ox',
+    question:funcInstr+"<br>"+f.n+") "+f.q,
+    choices:["O","X"],
+    answer:(f.ans==="O"?0:1),
+    solution:"정답: "+f.ans
+  });
+});
+
+// 28~50: "다음에서 x와 y 사이의 관계식을 구하여라."
+// 문제 원문(간략히):
+// 28) 토끼 x마리의 다리의 개수 y개
+// 29) 두발자전거 x대의 바퀴 총 개수 y개
+// ...
+let relInstr = "다음에서 \\(x\\)와 \\(y\\) 사이의 관계식을 구하여라.";
+let relData = [
+{id:28, text:"토끼 \\(x\\)마리의 다리의 개수는 \\(y\\)개이다.", ans:"y=4x"},
+{id:29, text:"두발자전거 \\(x\\)대의 바퀴의 총 개수는 \\(y\\)개이다.", ans:"y=2x"},
+{id:30, text:"무게가 20g인 추 \\(x\\)개의 무게 \\(y\\)g", ans:"y=20x"},
+{id:31, text:"한 변의 길이가 \\(x\\)cm인 정육각형의 둘레의 길이 \\(y\\)cm", ans:"y=6x"},
+{id:32, text:"30km의 거리를 시속 \\(x\\)km로 달렸을 때 걸린 시간 \\(y\\)시간", ans:"y=30/x"},
+{id:33, text:"가로의 길이가 \\(x\\)cm, 높이가 \\(y\\)cm인 삼각형의 넓이가 48cm²이다.", ans:"y=96/x"},
+{id:34, text:"10L들이 물통에 매분 \\(x\\)L씩 물을 넣는데 물이 가득 찰 때까지 걸린 시간 \\(y\\)분이다.", ans:"y=10/x"},
+{id:35, text:"넓이가 80cm²인 종이를 똑같이 \\(x\\)조각으로 잘랐을 때 한 조각의 넓이 \\(y\\)cm²", ans:"y=80/x"},
+{id:36, text:"한 개에 900원인 사과 \\(x\\)개의 값 \\(y\\)원이다.", ans:"y=900x"},
+{id:37, text:"시속 60km로 \\(x\\)시간 동안 달린 거리 \\(y\\)km이다.", ans:"y=60x"},
+{id:38, text:"\\(x\\)살인 아들보다 30살 많은 아버지의 나이 \\(y\\)살이다.", ans:"y=x+30"},
+{id:39, text:"한 권에 \\(x\\)원 하는 노트 7권의 가격은 \\(y\\)이다.", ans:"y=7x"},
+{id:40, text:"700원짜리 공책 \\(x\\)권의 가격 \\(y\\)원", ans:"y=700x"},
+{id:41, text:"자연수 \\(x\\)에 -4를 곱한 수 \\(y\\)", ans:"y=-4x"},
+{id:42, text:"200ml짜리 우유 \\(x\\)ml를 마시고 남은 양 \\(y\\)ml", ans:"y=200 - x"},
+{id:43, text:"3km의 거리를 \\(x\\)시간 동안 달렸을 때의 속력 \\(y\\)km/h", ans:"y=3/x"},
+{id:44, text:"넓이가 20cm²인 삼각형의 밑변의 길이 \\(x\\)cm와 높이 \\(y\\)cm 관계", ans:"y=40/x"},
+{id:45, text:"한 개에 1000원인 아이스크림을 \\(x\\)개 살 때 지불 금액 \\(y\\)원", ans:"y=1000x"},
+{id:46, text:"하루 24시간 중 낮의 길이가 \\(x\\)시간일 때의 밤의 길이 \\(y\\)시간", ans:"y=24 - x"},
+{id:47, text:"농도가 \\(x\\%\\)인 소금물 300g에 들어있는 소금의 양 \\(y\\)g", ans:"y=3x"},
+{id:48, text:"한 사람의 입장료가 6000원인 수영장에 \\(x\\)명이 입장할 때의 총 입장료 \\(y\\)원", ans:"y=6000x"},
+{id:49, text:"높이가 73mm인 종이컵을 \\(x\\)개 포개어 놓았을 때의 높이 \\(y\\)mm (2개:78mm,3개:83mm)", ans:"y=5x+68"},
+{id:50, text:"40대의 기계로 15시간 작업해야 끝나는 일을 \\(x\\)대의 기계로 할 때 걸리는 시간 \\(y\\)", ans:"y=600/x"}
+];
+
+relData.forEach(rd=>{
+  let eq=rd.ans;
+  let wrongs=[eq.replace('x','x+1'),eq.replace('x','2x'),eq.replace('x','x-1')];
+  // 중복 제거
+  let choices = [eq,wrongs[0],wrongs[1],wrongs[2]];
+  choices.sort(()=>Math.random()-0.5);
+  let idx = choices.indexOf(eq);
+  [choices[0],choices[idx]]=[choices[idx],choices[0]];
+  problems.push({
+    id:rd.id,
+    type:'4c',
+    question:relInstr+"<br>"+rd.id+") "+rd.text,
+    choices:choices,
+    answer:0,
+    solution:"정답: "+eq
+  });
+});
+
+// 51~78: "다음 중 일차함수인 것에는 ○표, 일차함수가 아닌 것에는 ×표를 하여라."
+let linInstr="다음 중 일차함수인 것에는 ○표, 일차함수가 아닌 것에는 ×표를 하여라.";
+let linearData=[
+{n:51, q:"\\(y=2x\\)", ans:"O"},
+{n:52, q:"\\(y=\\frac{5}{x}\\)", ans:"X"},
+{n:53, q:"\\(3x - y + 2=0\\)", ans:"O"},
+{n:54, q:"\\(5x-2=0\\)", ans:"X"}, 
+{n:55, q:"\\(x+y=2\\)", ans:"O"},
+{n:56, q:"\\(y^2 - y + 3 = x + y^2 - 8\\)", ans:"O"},
+{n:57, q:"\\(3x+2y-1=0\\)", ans:"O"},
+{n:58, q:"\\(y = x+(3 - x)\\)", ans:"O"},
+{n:59, q:"\\(y \\ge \\frac{1}{2}x +3\\)", ans:"X"},
+{n:60, q:"\\(y=2 - \\frac{1}{2}x\\)", ans:"O"},
+{n:61, q:"\\(y=x(x-1)\\)", ans:"X"},
+{n:62, q:"\\(y=\\frac{2}{5}x -1\\)", ans:"O"},
+{n:63, q:"\\(xy=1\\)", ans:"X"},
+{n:64, q:"\\(y=-\\frac{1}{4}x +3\\)", ans:"O"},
+{n:65, q:"\\(y=4x^2 -3\\)", ans:"X"},
+{n:66, q:"\\(y=\\frac{1}{x} +2\\)", ans:"X"},
+{n:67, q:"\\(y=2x^2 -x(2x-1)\\)", ans:"O"},
+{n:68, q:"\\(y=x - \\frac{1}{2}x(2x-1)\\)", ans:"X"},
+{n:69, q:"\\(y=\\frac{x-5}{2}\\)", ans:"O"},
+{n:70, q:"\\(y=-2(x-1)-2\\)", ans:"O"},
+{n:71, q:"\\(y - x^2 = x(x+1)\\)", ans:"X"},
+{n:72, q:"\\(2x - y = x - 2y\\)", ans:"O"},
+{n:73, q:"\\(y=2x - 2(x-1)\\)", ans:"O"},
+{n:74, q:"\\(y=\\frac{x-1}{2}\\)", ans:"O"},
+{n:75, q:"\\(y=\\frac{3}{x}+2\\)", ans:"X"},
+{n:76, q:"\\(y=2x - x(3 - x)\\)", ans:"X"},
+{n:77, q:"\\(y+1 = x+1\\)", ans:"O"},
+{n:78, q:"\\(y+x = x+1\\)", ans:"O"}
+];
+
+linearData.forEach(l=>{
+  problems.push({
+    id:l.n,
+    type:'ox',
+    question:linInstr+"<br>"+l.n+") "+l.q,
+    choices:["O","X"],
+    answer:(l.ans==="O"?0:1),
+    solution:"정답: "+l.ans
+  });
+});
+
+// 108~114: "다음 주어진 함수가 일차함수가 되기 위한 상수 a,b의 조건을 구하여라."
+// 여기서 각 문제별 식:  
+// 108: y = a x -4 x + 2
+// 조건: a≠4
+// 보기: "a≠4", "a=4", "a=0", "a=1" 중 a≠4가 정답
+// 109: y = (ax-1)(x+3)-(bx+2)
+// 조건: a=0, b≠-1
+// 보기는 조건식 형태: "a=0이고 b≠-1", "a=0이고 b=-1", "a=1이고 b≠-1", "a=1이고 b=-1"
+// 110: y = -2x(1 - a x) + b x +1
+// 조건: a=0, b≠2
+// 111: y = (1/2) x (a x +4) + b x -1
+// 조건: a=0,b≠-2
+// 112: y = x(bx-1) + a x -5
+// 조건: b=0,a≠1
+// 113: y = x(a x +3) - b x +1
+// 조건: a=0,b≠3
+// 114: y = x(2 a x -1) + b x
+// 조건: a=0,b≠1
+
+// 각 문제별 보기 4개는 모두 조건식으로 제시 (a,b 구체 값 아님)
+// 예: 108문제 보기: 1) a≠4 2)a=4 3) a=0 4) a는 임의
+// 정답은 조건을 만족하는 항목
+
+let abInstr="다음 주어진 함수가 일차함수가 되기 위한 상수 \\(a,b\\)의 조건을 구하여라.";
+
+let abData=[
+{id:108, eq:"y = a x -4 x + 2", cond:"a≠4", choices:["a≠4","a=4","a=0","a=1"]},
+{id:109, eq:"y = (a x -1)(x+3) - (b x +2)", cond:"a=0이고 b≠-1", choices:["a=0이고 b≠-1","a=0이고 b=-1","a=1이고 b≠-1","a=1이고 b=-1"]},
+{id:110, eq:"y = -2x(1 - a x) + b x +1", cond:"a=0이고 b≠2", choices:["a=0이고 b≠2","a=0이고 b=2","a=1이고 b=2","a=1이고 b=3"]},
+{id:111, eq:"y = (1/2) x (a x +4) + b x -1", cond:"a=0이고 b≠-2", choices:["a=0이고 b≠-2","a=0이고 b=-2","a=1이고 b=-2","a=1이고 b=2"]},
+{id:112, eq:"y = x(b x -1) + a x -5", cond:"b=0이고 a≠1", choices:["b=0이고 a≠1","b=0이고 a=1","b=1이고 a≠1","b=1이고 a=1"]},
+{id:113, eq:"y = x(a x +3) - b x +1", cond:"a=0이고 b≠3", choices:["a=0이고 b≠3","a=0이고 b=3","a=1이고 b=3","a=1이고 b≠3"]},
+{id:114, eq:"y = x(2 a x -1) + b x", cond:"a=0이고 b≠1", choices:["a=0이고 b≠1","a=0이고 b=1","a=1이고 b=1","a=1이고 b≠1"]}
+];
+
+abData.forEach(d=>{
+  let ansIdx= d.choices.findIndex(c=>c===d.cond);
+  problems.push({
+    id:d.id,
+    type:'4c',
+    question:abInstr+"<br>"+d.id+") \\("+d.eq+"\\)",
+    choices:d.choices,
+    answer:ansIdx,
+    solution:"정답: "+d.cond
+  });
+});
+
+
+let currentProblemIndex = 0;
+let lives = 3;
+let score = 0;
+let startTime = null;
+let difficulty = null;
+let timeLimit = null;
+let globalStartTime = Date.now();
+let intervalId = null;
+let problemPool = [...problems]; 
+let usedProblems = [];
+let infiniteMode = false;
+let energyMaxWidth = 100;
+let energyWidth = 100;
+
+function goToDifficulty(){
+  document.getElementById('start-screen').style.display='none';
+  document.getElementById('difficulty-select').style.display='block';
+}
+
+function startGame(diff){
+  difficulty=diff;
+  document.getElementById('difficulty-select').style.display='none';
+  document.getElementById('quiz-area').style.display='block';
+  lives=3;
+  score=0;
+  usedProblems=[];
+  infiniteMode=false;
+  globalStartTime=Date.now();
+  timeLimit=difficultySettings[difficulty].time;
+  updateStatus();
+  nextProblem();
+}
+
+function updateStatus(){
+  document.getElementById('lives').textContent="남은 기회: "+lives;
+  document.getElementById('score-display').textContent="점수: "+score;
+  let elapsed = Math.floor((Date.now()-globalStartTime)/1000);
+  document.getElementById('global-timer').textContent="전체 경과 시간: "+elapsed+"초";
+}
+
+function startTimer(){
+  if(intervalId) clearInterval(intervalId);
+  energyWidth=100;
+  let tick=()=>{
+    updateStatus();
+    if(timeLimit && timeLimit>0){
+      energyWidth -= (100/(timeLimit*5));
+      if(energyWidth<=0){
+        energyWidth=0;
+        clearInterval(intervalId);
+        timeUp();
+      }
+    }
+    document.getElementById('energy-bar').style.width=energyWidth+"%";
+  };
+  intervalId=setInterval(tick,200);
+}
+
+function timeUp(){
+  lives--;
+  if(lives<=0){
+    endGame();
+  } else {
+    alert("시간이 초과되었습니다! 기회 1 감소.");
+    nextProblem();
+  }
+}
+
+function nextProblem(){
+  if(intervalId) clearInterval(intervalId);
+  if(!infiniteMode && usedProblems.length===problems.length){
+    infiniteMode=true;
+    alert("모든 문제를 풀었습니다! 이제 무한 랜덤 모드로 진행됩니다.");
+  }
+  let p=null;
+  if(infiniteMode){
+    p=problems[Math.floor(Math.random()*problems.length)];
+  }else{
+    let remain = problemPool.filter(pp=>!usedProblems.includes(pp.id));
+    p=remain[Math.floor(Math.random()*remain.length)];
+  }
+  currentProblemIndex=p.id;
+  showProblem(p);
+}
+
+function showProblem(p){
+  document.getElementById('question').innerHTML=p.question;
+  let ansArea=document.getElementById('answers');
+  ansArea.innerHTML="";
+  p.choices.forEach((c,i)=>{
+    let btn=document.createElement('button');
+    btn.innerHTML="\\("+c+"\\)";
+    btn.onclick=()=>checkAnswer(i);
+    ansArea.appendChild(btn);
+  });
+  MathJax.typeset();
+  startTimer();
+}
+
+function getCurrentProblem(){
+  return problems.find(pp=>pp.id===currentProblemIndex);
+}
+
+function checkAnswer(i){
+  let p=getCurrentProblem();
+  if(i===p.answer){
+    score+=difficultySettings[difficulty].score;
+    showRandomReward();
+    usedProblems.push(p.id);
+    nextProblem();
+  } else {
+    lives--;
+    showSolutionPopup(p);
+    if(lives<=0){
+      setTimeout(endGame,500);
+    } else {
+      setTimeout(nextProblem,500);
+    }
+  }
+}
+
+function showSolutionPopup(p){
+  document.getElementById('solution-content').innerHTML="<b>오답!</b><br>정답: \\("+p.choices[p.answer]+"\\)<br>풀이: "+p.solution;
+  MathJax.typeset();
+  document.getElementById('popup-solution').style.display='block';
+}
+
+function closeSolution(){
+  document.getElementById('popup-solution').style.display='none';
+}
+
+function showRandomReward(){
+  let r=Math.random();
+  if(r<1/10000){
+    showRewardPopup("5000원 상품권 당첨!");
+  } else if(r<1/1000){
+    showRewardPopup("3000원 상품권 당첨!");
+  } else if(r<1/500){
+    showRewardPopup("1회 면제권 당첨! (한 번 틀려도 라이프 안깎임)");
+    lives++;
+  }
+}
+
+function showRewardPopup(msg){
+  document.getElementById('reward-content').innerHTML=msg;
+  document.getElementById('popup-reward').style.display='block';
+}
+
+function closeReward(){
+  document.getElementById('popup-reward').style.display='none';
+}
+
+function endGame(){
+  if(intervalId) clearInterval(intervalId);
+  document.getElementById('quiz-area').style.display='none';
+  document.getElementById('result-area').style.display='block';
+  document.getElementById('final-score').textContent=score;
+}
+
+function restartGame(){
+  document.getElementById('result-area').style.display='none';
+  document.getElementById('start-screen').style.display='block';
+}
+</script>
+</body>
+</html>
